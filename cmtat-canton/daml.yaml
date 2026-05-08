@@ -1,0 +1,15 @@
+sdk-version: 2.10.4
+name: cmtat-canton
+version: 0.1.0
+source: src
+init-script: Cmtat.Test.Main:setup
+parties:
+  - Issuer
+  - Operator
+  - Alice
+  - Bob
+  - Eve
+dependencies:
+  - daml-prim
+  - daml-stdlib
+  - daml-script

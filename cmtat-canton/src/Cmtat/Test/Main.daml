@@ -1,0 +1,170 @@
+module Cmtat.Test.Main where
+
+import DA.Assert (assertEq)
+import Daml.Script
+import Cmtat.Mandatory.Model
+
+setup : Scenario ()
+setup = scenario do
+  issuer <- getParty "Issuer"
+  operator <- getParty "Operator"
+  alice <- getParty "Alice"
+  bob <- getParty "Bob"
+  eve <- getParty "Eve"
+
+  cfg0 <- submit issuer do
+    create TokenConfig with
+      issuer = issuer
+      operators = [operator]
+      readers = [alice, bob, eve]
+      name = "Canton Security Token"
+      symbol = "CST"
+      tokenId = "CST-001"
+      termsRef = "ipfs://terms-hash"
+      decimals = 0
+      allowFractional = False
+      paused = False
+      deactivated = False
+      totalSupply = 0
+
+  adminCid <- submit issuer do
+    create TokenAdmin with
+      issuer = issuer
+      operators = [operator]
+      readers = [alice, bob, eve]
+      tokenId = "CST-001"
+
+  total0 <- submit eve do
+    exercise cfg0 TotalSupplyOf with actor = eve
+  assertEq 0 total0
+
+  alice0 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = alice
+  assertEq 0 alice0
+
+  submitMustFail eve do
+    exercise adminCid Mint with
+      actor = eve
+      configCid = cfg0
+      owner = alice
+      mintAmount = 10
+
+  submitMustFail eve do
+    exercise cfg0 Pause with actor = eve
+
+  cfg1 <- submit issuer do
+    exercise adminCid Mint with
+      actor = issuer
+      configCid = cfg0
+      owner = alice
+      mintAmount = 100
+
+  cfg2 <- submit operator do
+    exercise adminCid Mint with
+      actor = operator
+      configCid = cfg1
+      owner = bob
+      mintAmount = 10
+
+  total1 <- submit eve do
+    exercise cfg2 TotalSupplyOf with actor = eve
+  assertEq 110 total1
+
+  alice1 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = alice
+  bob1 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = bob
+  assertEq 100 alice1
+  assertEq 10 bob1
+
+  cfg3 <- submit alice do
+    exercise adminCid Transfer with
+      actor = alice
+      configCid = cfg2
+      to = bob
+      transferAmount = 15
+
+  alice2 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = alice
+  bob2 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = bob
+  assertEq 85 alice2
+  assertEq 25 bob2
+
+  cfg4 <- submit issuer do
+    exercise cfg3 Pause with actor = issuer
+
+  submitMustFail alice do
+    exercise adminCid Transfer with
+      actor = alice
+      configCid = cfg4
+      to = bob
+      transferAmount = 1
+
+  cfg5 <- submit issuer do
+    exercise cfg4 Unpause with actor = issuer
+
+  _aliceFrozen <- submit issuer do
+    exercise adminCid Freeze with
+      actor = issuer
+      configCid = cfg5
+      owner = alice
+
+  submitMustFail alice do
+    exercise adminCid Transfer with
+      actor = alice
+      configCid = cfg5
+      to = bob
+      transferAmount = 1
+
+  _aliceUnfrozen <- submit operator do
+    exercise adminCid Unfreeze with
+      actor = operator
+      configCid = cfg5
+      owner = alice
+
+  cfg6 <- submit issuer do
+    exercise adminCid Burn with
+      actor = issuer
+      configCid = cfg5
+      owner = bob
+      burnAmount = 5
+
+  total2 <- submit eve do
+    exercise cfg6 TotalSupplyOf with actor = eve
+  bob3 <- submit eve do
+    exercise adminCid BalanceOf with actor = eve; owner = bob
+  assertEq 105 total2
+  assertEq 20 bob3
+
+  cfg7 <- submit issuer do
+    exercise cfg6 Deactivate with actor = issuer
+
+  submitMustFail issuer do
+    exercise adminCid Mint with
+      actor = issuer
+      configCid = cfg7
+      owner = bob
+      mintAmount = 1
+
+  submitMustFail issuer do
+    exercise adminCid Burn with
+      actor = issuer
+      configCid = cfg7
+      owner = bob
+      burnAmount = 1
+
+  submitMustFail issuer do
+    exercise adminCid Freeze with
+      actor = issuer
+      configCid = cfg7
+      owner = bob
+
+  submitMustFail issuer do
+    exercise cfg7 Unpause with actor = issuer
+
+  totalFinal <- submit eve do
+    exercise cfg7 TotalSupplyOf with actor = eve
+  assertEq 105 totalFinal
+
+  pure ()
