@@ -1,0 +1,6 @@
+module Cmtat.Mandatory.Auth where
+
+import DA.List (elem)
+
+isAuthorized : Party -> Party -> [Party] -> Bool
+isAuthorized actor issuer operators = actor == issuer || elem actor operators

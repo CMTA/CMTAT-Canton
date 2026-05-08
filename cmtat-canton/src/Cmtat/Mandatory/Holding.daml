@@ -1,0 +1,17 @@
+module Cmtat.Mandatory.Holding where
+
+template Holding
+  with
+    issuer : Party
+    owner : Party
+    tokenId : Text
+    amount : Int
+    frozen : Bool
+  where
+    signatory issuer
+    observer owner
+
+    key (issuer, tokenId, owner) : (Party, Text, Party)
+    maintainer key._1
+
+    ensure amount >= 0

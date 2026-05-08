@@ -27,12 +27,36 @@ This README is organized as follows:
 - Excluded: Optional modules (snapshot, dividend, debt, enforcement extras, allowlist/rules engine, etc.).
 
 ## Package Layout
-- `src/Cmtat/Mandatory/Model.daml`: Token data model and business logic.
+- `src/Cmtat/Mandatory/Auth.daml`: Authorization helpers (`isAuthorized`).
+- `src/Cmtat/Mandatory/Holding.daml`: Holder balance/freeze template.
+- `src/Cmtat/Mandatory/TokenConfig.daml`: Token metadata and lifecycle template.
+- `src/Cmtat/Mandatory/TokenAdmin.daml`: Operational template (mint/burn/transfer/freeze/unfreeze).
+- `src/Cmtat/Mandatory/Model.daml`: Compatibility facade re-exporting the mandatory modules.
 - `src/Cmtat/Test/Main.daml`: Script tests for positive and negative flows.
 - `daml.yaml`: Package configuration and init script.
 
 ## Architecture
-The model uses three templates:
+The model is split into four mandatory modules:
+
+1. `Auth`
+- Shared helper logic for privileged action checks.
+- Exposes: `isAuthorized`.
+
+2. `Holding`
+- Per-holder balance and freeze state.
+- Defines the `Holding` template and holding key.
+
+3. `TokenConfig`
+- Global token metadata and lifecycle state.
+- Defines the `TokenConfig` template and lifecycle/read choices.
+
+4. `TokenAdmin`
+- Operational entrypoint for issuance and balance operations.
+- Defines the `TokenAdmin` template and operational choices.
+
+`Model.daml` now re-exports these modules to preserve a stable import path (`Cmtat.Mandatory.Model`).
+
+The functional model still uses three templates:
 
 1. `TokenConfig`
 - Global token metadata and lifecycle state.
@@ -287,6 +311,10 @@ Deactivation is irreversible in this model.
 From `cmtat-canton/`:
 - `daml build`
 - `daml test`
+
+From repository root (Dockerized toolchain):
+- `make daml-build-docker`
+- `make daml-test-docker`
 
 ## Current Environment Note
 In this execution environment, `daml` CLI is not installed, so tests could not be executed here. The implementation is ready to run in a Daml-enabled setup.
