@@ -1,9 +1,9 @@
 [submodule "CMTAT-equivalency-assessment"]
-	path = CMTAT-equivalency-assessment
+	path = submodules/CMTAT-equivalency-assessment
 	url = https://github.com/CMTA/CMTAT-equivalency-assessment.git
 [submodule "CMTAT"]
-	path = CMTAT
+	path = submodules/CMTAT
 	url = https://github.com/CMTA/CMTAT
 [submodule "CMTAT-Confidential"]
-	path = CMTAT-Confidential
+	path = submodules/CMTAT-Confidential
 	url = https://github.com/CMTA/CMTAT-Confidential
