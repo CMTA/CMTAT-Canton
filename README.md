@@ -44,7 +44,7 @@ This README is organized as follows:
 
 ## 2. Scope
 ### In scope
-- Mandatory token attributes and functions (`1.a`-`1.e`, `1.1`-`1.10`)
+- Mandatory token attributes and functions (IDs 1–4, 6–10, 12–16)
 - Core lifecycle controls: pause, unpause, deactivate
 - Account-level freeze / unfreeze
 
@@ -197,7 +197,7 @@ This section compares the CMTAT Solidity implementation family and this reposito
 
 | Topic | CMTAT Solidity | This Canton Package |
 |---|---|---|
-| Scope | Core plus optional/extended modules depending on variant (allowlist, rule engine, snapshot, debt, enforcement, upgradeability, etc.). | Mandatory core only (`1.a`-`1.e`, `1.1`-`1.10`). |
+| Scope | Core plus optional/extended modules depending on variant (allowlist, rule engine, snapshot, debt, enforcement, upgradeability, etc.). | Mandatory core only (IDs 1–4, 6–10, 12–16). |
 | Structure | Typically one token contract integrating modules. | Split into `TokenConfig`, `Holding`, and `TokenAdmin` templates. |
 | Freeze interface | Often a single boolean-based function (`setAddressFrozen(address, bool)`). | Two explicit choices: `Freeze` and `Unfreeze`. |
 | Access control | Role-based permissions (`grantRole`, `revokeRole`, `hasRole`) with module roles. | `isAuthorized actor issuer operators` with Daml choice controllers. |
@@ -208,7 +208,7 @@ This section compares the CMTAT Solidity implementation family and this reposito
 
 1. Scope
 - CMTAT Solidity: includes core plus several optional/extended modules depending on variant (allowlist, rule engine, snapshot, debt, enforcement, upgradeability, etc.).
-- This Canton package: includes only mandatory CMTAT core (`1.a`-`1.e`, `1.1`-`1.10`).
+- This Canton package: includes only mandatory CMTAT core (IDs 1–4, 6–10, 12–16).
 
 2. Contract structure
 - CMTAT Solidity: typically one token contract integrating modules.
@@ -246,7 +246,7 @@ This section compares this repository (`cmtat-canton`) with the `CMTAT-Confident
 
 | Topic | Canton Core (`cmtat-canton`) | CMTAT-Confidential (Zama FHE) |
 |---|---|---|
-| Primary objective | Mandatory CMTAT baseline equivalency (`1.a`-`1.e`, `1.1`-`1.10`). | Confidential token operations with CMTAT compliance modules on ERC-7984/FHE. |
+| Primary objective | Mandatory CMTAT baseline equivalency (IDs 1–4, 6–10, 12–16). | Confidential token operations with CMTAT compliance modules on ERC-7984/FHE. |
 | Runtime model | Daml templates/choices on Canton. | Solidity contracts on EVM with Zama FHE tooling. |
 | Balance representation | Plain integer balances in `Holding.amount` (party-visible by ledger visibility rules). | Encrypted balances (`euint64`) with ACL-gated decryption. |
 | Transfer amount confidentiality | Not ciphertext-based; privacy comes from Canton party-scoped visibility. | Encrypted transfer amounts with ZK proof input flow. |
