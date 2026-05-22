@@ -1,8 +1,5 @@
 module Cmtat.Mandatory.TokenConfig where
 
-import DA.Assert (assertMsg)
-import Cmtat.Mandatory.Auth (isAuthorized)
-
 template TokenConfig
   with
     issuer : Party
@@ -30,30 +27,3 @@ template TokenConfig
       with actor : Party
       controller actor
       do pure totalSupply
-
-    choice Pause : ContractId TokenConfig
-      with actor : Party
-      controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "token deactivated" (not deactivated)
-        archive self
-        create this with paused = True
-
-    choice Unpause : ContractId TokenConfig
-      with actor : Party
-      controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "token deactivated" (not deactivated)
-        archive self
-        create this with paused = False
-
-    choice Deactivate : ContractId TokenConfig
-      with actor : Party
-      controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "already deactivated" (not deactivated)
-        archive self
-        create this with deactivated = True

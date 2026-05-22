@@ -386,6 +386,29 @@ Rule of thumb:
 
 Even when migration is not required, v1 and v2 may coexist during rollout; migration can still be executed later for operational standardization.
 
+### 8. What are `cfg0`, `cfg1`, `cfg5`… in the test script?
+Each name tracks the **current live `ContractId TokenConfig`** after a state-changing operation.
+
+In Daml, contracts are immutable. Every choice that mutates `TokenConfig` (Mint, Burn, Pause, Unpause, Deactivate, ForcedBurn) archives the old contract and creates a new one, which returns a brand-new `ContractId`. The old ID is permanently dead — exercising it aborts with "contract consumed".
+
+The test script must thread the latest ID forward through every call:
+
+```
+cfg0  ← created initially (totalSupply=0, paused=False, deactivated=False)
+cfg1  ← after Mint alice 100       (totalSupply=100)
+cfg2  ← after Mint bob 10          (totalSupply=110)
+cfg4  ← after Pause                (paused=True)
+cfg5  ← after Unpause              (paused=False)
+cfg6  ← after ForcedBurn alice 5   (totalSupply=105)
+cfg7  ← after Burn bob 5           (totalSupply=100)
+cfg8  ← after Deactivate           (deactivated=True)
+cfg9  ← after ForcedBurn bob 1     (totalSupply=99)
+```
+
+Numbering gaps (`cfg3` missing, no binding between `cfg5` and `cfg6`) reflect operations that do not mutate `TokenConfig` — `Transfer`, `Freeze`, `Unfreeze` — so no new ID is produced.
+
+In a production application, the caller is responsible for keeping track of the latest `ContractId`, typically by querying the active contract set rather than threading IDs manually.
+
 ### What happens to a holder with 100 tokens on v1 when v2 is deployed?
 The 100 tokens remain on-ledger. Uploading v2 does not delete or rewrite v1 contracts.
 

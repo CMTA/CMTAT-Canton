@@ -4,12 +4,13 @@ template Holding
   with
     issuer : Party
     owner : Party
+    readers : [Party]
     tokenId : Text
     amount : Int
     frozen : Bool
   where
     signatory issuer
-    observer owner
+    observer (owner :: readers)
 
     key (issuer, tokenId, owner) : (Party, Text, Party)
     maintainer key._1

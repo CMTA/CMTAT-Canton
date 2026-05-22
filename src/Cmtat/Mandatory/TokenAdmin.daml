@@ -1,6 +1,5 @@
 module Cmtat.Mandatory.TokenAdmin where
 
-import DA.Assert (assertMsg)
 import Cmtat.Mandatory.Auth (isAuthorized)
 import Cmtat.Mandatory.Holding (Holding(..))
 import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
@@ -15,6 +14,45 @@ template TokenAdmin
     signatory issuer
     observer (operators ++ readers)
 
+    nonconsuming choice Pause : ContractId TokenConfig
+      with
+        actor : Party
+        configCid : ContractId TokenConfig
+      controller actor
+      do
+        assertMsg "not authorized" (isAuthorized actor issuer operators)
+        cfg <- fetch configCid
+        assertMsg "token mismatch" (cfg.tokenId == tokenId)
+        assertMsg "token deactivated" (not cfg.deactivated)
+        archive configCid
+        create cfg with paused = True
+
+    nonconsuming choice Unpause : ContractId TokenConfig
+      with
+        actor : Party
+        configCid : ContractId TokenConfig
+      controller actor
+      do
+        assertMsg "not authorized" (isAuthorized actor issuer operators)
+        cfg <- fetch configCid
+        assertMsg "token mismatch" (cfg.tokenId == tokenId)
+        assertMsg "token deactivated" (not cfg.deactivated)
+        archive configCid
+        create cfg with paused = False
+
+    nonconsuming choice Deactivate : ContractId TokenConfig
+      with
+        actor : Party
+        configCid : ContractId TokenConfig
+      controller actor
+      do
+        assertMsg "not authorized" (isAuthorized actor issuer operators)
+        cfg <- fetch configCid
+        assertMsg "token mismatch" (cfg.tokenId == tokenId)
+        assertMsg "already deactivated" (not cfg.deactivated)
+        archive configCid
+        create cfg with deactivated = True
+
     nonconsuming choice BalanceOf : Int
       with
         actor : Party
@@ -28,7 +66,7 @@ template TokenAdmin
             h <- fetch holdingCid
             pure h.amount
 
-    choice Mint : ContractId TokenConfig
+    nonconsuming choice Mint : ContractId TokenConfig
       with
         actor : Party
         configCid : ContractId TokenConfig
@@ -49,12 +87,14 @@ template TokenAdmin
             _ <- create Holding with
               issuer = issuer
               owner = owner
+              readers = operators ++ readers
               tokenId = tokenId
               amount = mintAmount
               frozen = False
             pure ()
           Some holdingCid -> do
             h <- fetch holdingCid
+            assertMsg "holder frozen" (not h.frozen)
             archive holdingCid
             _ <- create h with amount = h.amount + mintAmount
             pure ()
@@ -62,7 +102,7 @@ template TokenAdmin
         archive configCid
         create cfg with totalSupply = cfg.totalSupply + mintAmount
 
-    choice Burn : ContractId TokenConfig
+    nonconsuming choice Burn : ContractId TokenConfig
       with
         actor : Party
         configCid : ContractId TokenConfig
@@ -83,6 +123,7 @@ template TokenAdmin
           Some cid -> pure cid
 
         h <- fetch holdingCid
+        assertMsg "holder frozen" (not h.frozen)
         assertMsg "insufficient balance" (h.amount >= burnAmount)
 
         archive holdingCid
@@ -91,7 +132,36 @@ template TokenAdmin
         archive configCid
         create cfg with totalSupply = cfg.totalSupply - burnAmount
 
-    choice Freeze : ContractId Holding
+    -- Bypasses frozen and deactivated checks.
+    nonconsuming choice ForcedBurn : ContractId TokenConfig
+      with
+        actor : Party
+        configCid : ContractId TokenConfig
+        owner : Party
+        burnAmount : Int
+      controller actor
+      do
+        assertMsg "not authorized" (isAuthorized actor issuer operators)
+        assertMsg "burn amount must be positive" (burnAmount > 0)
+
+        cfg <- fetch configCid
+        assertMsg "token mismatch" (cfg.tokenId == tokenId)
+
+        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+        holdingCid <- case mHoldingCid of
+          None -> abort "holding does not exist"
+          Some cid -> pure cid
+
+        h <- fetch holdingCid
+        assertMsg "insufficient balance" (h.amount >= burnAmount)
+
+        archive holdingCid
+        _ <- create h with amount = h.amount - burnAmount
+
+        archive configCid
+        create cfg with totalSupply = cfg.totalSupply - burnAmount
+
+    nonconsuming choice Freeze : ContractId Holding
       with
         actor : Party
         configCid : ContractId TokenConfig
@@ -112,7 +182,7 @@ template TokenAdmin
         archive holdingCid
         create h with frozen = True
 
-    choice Unfreeze : ContractId Holding
+    nonconsuming choice Unfreeze : ContractId Holding
       with
         actor : Party
         configCid : ContractId TokenConfig
@@ -133,7 +203,7 @@ template TokenAdmin
         archive holdingCid
         create h with frozen = False
 
-    choice Transfer : ContractId TokenConfig
+    nonconsuming choice Transfer : ()
       with
         actor : Party
         configCid : ContractId TokenConfig
@@ -162,6 +232,7 @@ template TokenAdmin
           None -> pure (Holding with
             issuer = issuer
             owner = to
+            readers = operators ++ readers
             tokenId = tokenId
             amount = 0
             frozen = False)
@@ -180,5 +251,3 @@ template TokenAdmin
             archive cid
             _ <- create toHolding with amount = toHolding.amount + transferAmount
             pure ()
-
-        pure configCid

@@ -4,16 +4,16 @@ import DA.Assert (assertEq)
 import Daml.Script
 import Cmtat.Mandatory.Model
 
-setup : Scenario ()
-setup = scenario do
-  issuer <- getParty "Issuer"
-  operator <- getParty "Operator"
-  alice <- getParty "Alice"
-  bob <- getParty "Bob"
-  eve <- getParty "Eve"
+setup : Script ()
+setup = script do
+  issuer   <- allocateParty "Issuer"
+  operator <- allocateParty "Operator"
+  alice    <- allocateParty "Alice"
+  bob      <- allocateParty "Bob"
+  eve      <- allocateParty "Eve"
 
   cfg0 <- submit issuer do
-    create TokenConfig with
+    createCmd TokenConfig with
       issuer = issuer
       operators = [operator]
       readers = [alice, bob, eve]
@@ -28,143 +28,192 @@ setup = scenario do
       totalSupply = 0
 
   adminCid <- submit issuer do
-    create TokenAdmin with
+    createCmd TokenAdmin with
       issuer = issuer
       operators = [operator]
       readers = [alice, bob, eve]
       tokenId = "CST-001"
 
+  -- read checks
   total0 <- submit eve do
-    exercise cfg0 TotalSupplyOf with actor = eve
+    exerciseCmd cfg0 TotalSupplyOf with actor = eve
   assertEq 0 total0
 
   alice0 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = alice
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = alice
   assertEq 0 alice0
 
+  -- unauthorized action failures
   submitMustFail eve do
-    exercise adminCid Mint with
+    exerciseCmd adminCid Mint with
       actor = eve
       configCid = cfg0
       owner = alice
       mintAmount = 10
 
   submitMustFail eve do
-    exercise cfg0 Pause with actor = eve
+    exerciseCmd adminCid Pause with actor = eve; configCid = cfg0
 
+  -- authorized mint paths
   cfg1 <- submit issuer do
-    exercise adminCid Mint with
+    exerciseCmd adminCid Mint with
       actor = issuer
       configCid = cfg0
       owner = alice
       mintAmount = 100
 
   cfg2 <- submit operator do
-    exercise adminCid Mint with
+    exerciseCmd adminCid Mint with
       actor = operator
       configCid = cfg1
       owner = bob
       mintAmount = 10
 
   total1 <- submit eve do
-    exercise cfg2 TotalSupplyOf with actor = eve
+    exerciseCmd cfg2 TotalSupplyOf with actor = eve
   assertEq 110 total1
 
   alice1 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = alice
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = alice
   bob1 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = bob
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = bob
   assertEq 100 alice1
   assertEq 10 bob1
 
-  cfg3 <- submit alice do
-    exercise adminCid Transfer with
+  -- transfer success and balance updates
+  submit alice do
+    exerciseCmd adminCid Transfer with
       actor = alice
       configCid = cfg2
       to = bob
       transferAmount = 15
 
   alice2 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = alice
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = alice
   bob2 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = bob
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = bob
   assertEq 85 alice2
   assertEq 25 bob2
 
+  -- pause/unpause transfer gating
   cfg4 <- submit issuer do
-    exercise cfg3 Pause with actor = issuer
+    exerciseCmd adminCid Pause with actor = issuer; configCid = cfg2
 
   submitMustFail alice do
-    exercise adminCid Transfer with
+    exerciseCmd adminCid Transfer with
       actor = alice
       configCid = cfg4
       to = bob
       transferAmount = 1
 
   cfg5 <- submit issuer do
-    exercise cfg4 Unpause with actor = issuer
+    exerciseCmd adminCid Unpause with actor = issuer; configCid = cfg4
 
-  _aliceFrozen <- submit issuer do
-    exercise adminCid Freeze with
+  -- freeze/unfreeze transfer gating
+  _ <- submit issuer do
+    exerciseCmd adminCid Freeze with
       actor = issuer
       configCid = cfg5
       owner = alice
 
   submitMustFail alice do
-    exercise adminCid Transfer with
+    exerciseCmd adminCid Transfer with
       actor = alice
       configCid = cfg5
       to = bob
       transferAmount = 1
 
-  _aliceUnfrozen <- submit operator do
-    exercise adminCid Unfreeze with
-      actor = operator
-      configCid = cfg5
-      owner = alice
-
-  cfg6 <- submit issuer do
-    exercise adminCid Burn with
+  -- standard burn on frozen address must fail
+  submitMustFail issuer do
+    exerciseCmd adminCid Burn with
       actor = issuer
       configCid = cfg5
+      owner = alice
+      burnAmount = 1
+
+  -- mint to frozen address (existing holding) must fail
+  submitMustFail issuer do
+    exerciseCmd adminCid Mint with
+      actor = issuer
+      configCid = cfg5
+      owner = alice
+      mintAmount = 1
+
+  -- forcedBurn succeeds on frozen address; alice: 85 -> 80, total: 110 -> 105
+  cfg6 <- submit issuer do
+    exerciseCmd adminCid ForcedBurn with
+      actor = issuer
+      configCid = cfg5
+      owner = alice
+      burnAmount = 5
+
+  aliceFrozen <- submit eve do
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = alice
+  totalAfterForcedBurn <- submit eve do
+    exerciseCmd cfg6 TotalSupplyOf with actor = eve
+  assertEq 80 aliceFrozen
+  assertEq 105 totalAfterForcedBurn
+
+  -- unfreeze alice
+  _ <- submit operator do
+    exerciseCmd adminCid Unfreeze with
+      actor = operator
+      configCid = cfg6
+      owner = alice
+
+  -- burn supply reduction; bob: 25 -> 20, total: 105 -> 100
+  cfg7 <- submit issuer do
+    exerciseCmd adminCid Burn with
+      actor = issuer
+      configCid = cfg6
       owner = bob
       burnAmount = 5
 
   total2 <- submit eve do
-    exercise cfg6 TotalSupplyOf with actor = eve
+    exerciseCmd cfg7 TotalSupplyOf with actor = eve
   bob3 <- submit eve do
-    exercise adminCid BalanceOf with actor = eve; owner = bob
-  assertEq 105 total2
+    exerciseCmd adminCid BalanceOf with actor = eve; owner = bob
+  assertEq 100 total2
   assertEq 20 bob3
 
-  cfg7 <- submit issuer do
-    exercise cfg6 Deactivate with actor = issuer
+  -- deactivation gating
+  cfg8 <- submit issuer do
+    exerciseCmd adminCid Deactivate with actor = issuer; configCid = cfg7
 
   submitMustFail issuer do
-    exercise adminCid Mint with
+    exerciseCmd adminCid Mint with
       actor = issuer
-      configCid = cfg7
+      configCid = cfg8
       owner = bob
       mintAmount = 1
 
   submitMustFail issuer do
-    exercise adminCid Burn with
+    exerciseCmd adminCid Burn with
       actor = issuer
-      configCid = cfg7
+      configCid = cfg8
+      owner = bob
+      burnAmount = 1
+
+  -- forcedBurn bypasses deactivation; bob: 20 -> 19, total: 100 -> 99
+  cfg9 <- submit issuer do
+    exerciseCmd adminCid ForcedBurn with
+      actor = issuer
+      configCid = cfg8
       owner = bob
       burnAmount = 1
 
   submitMustFail issuer do
-    exercise adminCid Freeze with
+    exerciseCmd adminCid Freeze with
       actor = issuer
-      configCid = cfg7
+      configCid = cfg9
       owner = bob
 
   submitMustFail issuer do
-    exercise cfg7 Unpause with actor = issuer
+    exerciseCmd adminCid Unpause with actor = issuer; configCid = cfg9
 
+  -- total supply readable post-deactivation
   totalFinal <- submit eve do
-    exercise cfg7 TotalSupplyOf with actor = eve
-  assertEq 105 totalFinal
+    exerciseCmd cfg9 TotalSupplyOf with actor = eve
+  assertEq 99 totalFinal
 
   pure ()
