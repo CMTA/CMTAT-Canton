@@ -1,0 +1,40 @@
+module Cmtat.Mandatory.TransferModule where
+
+import Cmtat.Mandatory.Holding (Holding(..))
+import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+
+doTransfer : Party -> Party -> [Party] -> [Party] -> Text -> ContractId TokenConfig -> Party -> Int -> Update ()
+doTransfer actor issuer operators readers tokenId configCid to transferAmount = do
+  assertMsg "amount must be positive" (transferAmount > 0)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  assertMsg "token paused" (not cfg.paused)
+  mFromCid <- lookupByKey @Holding (issuer, tokenId, actor)
+  fromCid <- case mFromCid of
+    None -> abort "sender holding does not exist"
+    Some cid -> pure cid
+  fromH <- fetch fromCid
+  assertMsg "sender frozen" (not fromH.frozen)
+  assertMsg "insufficient balance" (fromH.amount >= transferAmount)
+  mToCid <- lookupByKey @Holding (issuer, tokenId, to)
+  toHolding <- case mToCid of
+    None -> pure (Holding with
+      issuer = issuer
+      owner = to
+      readers = operators ++ readers
+      tokenId = tokenId
+      amount = 0
+      frozen = False)
+    Some cid -> fetch cid
+  assertMsg "receiver frozen" (not toHolding.frozen)
+  archive fromCid
+  _ <- create fromH with amount = fromH.amount - transferAmount
+  case mToCid of
+    None -> do
+      _ <- create toHolding with amount = transferAmount
+      pure ()
+    Some cid -> do
+      archive cid
+      _ <- create toHolding with amount = toHolding.amount + transferAmount
+      pure ()

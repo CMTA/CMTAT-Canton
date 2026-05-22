@@ -1,0 +1,24 @@
+module Cmtat.Mandatory.BurnModule where
+
+import Cmtat.Mandatory.Auth (isAuthorized)
+import Cmtat.Mandatory.Holding (Holding(..))
+import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+
+doBurn : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Party -> Int -> Update (ContractId TokenConfig)
+doBurn actor issuer operators tokenId configCid owner burnAmount = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  assertMsg "burn amount must be positive" (burnAmount > 0)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+  holdingCid <- case mHoldingCid of
+    None -> abort "holding does not exist"
+    Some cid -> pure cid
+  h <- fetch holdingCid
+  assertMsg "holder frozen" (not h.frozen)
+  assertMsg "insufficient balance" (h.amount >= burnAmount)
+  archive holdingCid
+  _ <- create h with amount = h.amount - burnAmount
+  archive configCid
+  create cfg with totalSupply = cfg.totalSupply - burnAmount

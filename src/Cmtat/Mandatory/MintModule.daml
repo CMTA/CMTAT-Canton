@@ -1,0 +1,32 @@
+module Cmtat.Mandatory.MintModule where
+
+import Cmtat.Mandatory.Auth (isAuthorized)
+import Cmtat.Mandatory.Holding (Holding(..))
+import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+
+doMint : Party -> Party -> [Party] -> [Party] -> Text -> ContractId TokenConfig -> Party -> Int -> Update (ContractId TokenConfig)
+doMint actor issuer operators readers tokenId configCid owner mintAmount = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  assertMsg "mint amount must be positive" (mintAmount > 0)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+  case mHoldingCid of
+    None -> do
+      _ <- create Holding with
+        issuer = issuer
+        owner = owner
+        readers = operators ++ readers
+        tokenId = tokenId
+        amount = mintAmount
+        frozen = False
+      pure ()
+    Some holdingCid -> do
+      h <- fetch holdingCid
+      assertMsg "holder frozen" (not h.frozen)
+      archive holdingCid
+      _ <- create h with amount = h.amount + mintAmount
+      pure ()
+  archive configCid
+  create cfg with totalSupply = cfg.totalSupply + mintAmount

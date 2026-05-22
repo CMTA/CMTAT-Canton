@@ -53,66 +53,37 @@ This README is organized as follows:
 - EVM-specific patterns (proxy upgradeability, ERC-2771 gasless relay model)
 
 ## 3. Repository Structure
-- `src/`: Daml implementation
-- `daml.yaml`: package configuration
-- `src/Cmtat/Mandatory/Auth.daml`: authorization helper (`isAuthorized`)
-- `src/Cmtat/Mandatory/Holding.daml`: holder state
-- `src/Cmtat/Mandatory/TokenConfig.daml`: token metadata + lifecycle state
-- `src/Cmtat/Mandatory/TokenAdmin.daml`: operational choices
-- `src/Cmtat/Mandatory/Model.daml`: compatibility facade
-- `src/Cmtat/Test/Main.daml`: test script
-- `submodules/CMTAT`: upstream Solidity reference
-- `submodules/CMTAT-Confidential`: Zama FHE confidential variant
-- `submodules/CMTAT-equivalency-assessment`: equivalency checklist template
 
-## Package Layout
-- `src/Cmtat/Mandatory/Auth.daml`: Authorization helpers (`isAuthorized`).
-- `src/Cmtat/Mandatory/Holding.daml`: Holder balance/freeze template.
-- `src/Cmtat/Mandatory/TokenConfig.daml`: Token metadata and lifecycle template.
-- `src/Cmtat/Mandatory/TokenAdmin.daml`: Operational template (mint/burn/transfer/freeze/unfreeze).
-- `src/Cmtat/Mandatory/Model.daml`: Compatibility facade re-exporting the mandatory modules.
-- `src/Cmtat/Test/Main.daml`: Script tests for positive and negative flows.
-- `daml.yaml`: Package configuration and init script.
+```
+cmtat-canton/
+├── daml.yaml                          # Package config, SDK version, init script
+├── src/
+│   └── Cmtat/
+│       ├── Mandatory/                 # Core token implementation
+│       └── Test/                      # Daml Script tests
+└── submodules/
+    ├── CMTAT/                         # Upstream Solidity reference
+    ├── CMTAT-Confidential/            # Zama FHE confidential variant
+    └── CMTAT-equivalency-assessment/  # Equivalency checklist template
+```
 
-## 4. Architecture
-The model is split into four mandatory modules:
+## 4. Source File Reference
 
-1. `Auth`
-- Shared helper logic for privileged action checks.
-- Exposes: `isAuthorized`.
+All source files live under `src/Cmtat/`. Each row describes one `.daml` file: what it defines, what kind of artifact it is, and its role in the system.
 
-2. `Holding`
-- Per-holder balance and freeze state.
-- Defines the `Holding` template and holding key.
-
-3. `TokenConfig`
-- Global token metadata and lifecycle state.
-- Defines the `TokenConfig` template and lifecycle/read choices.
-
-4. `TokenAdmin`
-- Operational entrypoint for issuance and balance operations.
-- Defines the `TokenAdmin` template and operational choices.
-
-`Model.daml` now re-exports these modules to preserve a stable import path (`Cmtat.Mandatory.Model`).
-
-The functional model still uses three templates:
-
-1. `TokenConfig`
-- Global token metadata and lifecycle state.
-- Fields: `name`, `symbol`, `tokenId`, `termsRef`, `decimals`, `allowFractional`, `paused`, `deactivated`, `totalSupply`.
-- Roles: `issuer` (signatory), `operators` + `readers` (observers).
-- Lifecycle choices: `Pause`, `Unpause`, `Deactivate`.
-- Read choice: `TotalSupplyOf`.
-
-2. `Holding`
-- Per-holder balance and freeze state.
-- Fields: `issuer`, `owner`, `tokenId`, `amount`, `frozen`.
-- Key: `(issuer, tokenId, owner)` with `issuer` as maintainer.
-
-3. `TokenAdmin`
-- Operational entrypoint for issuance and balance operations.
-- Roles: `issuer` (signatory), `operators` + `readers` (observers).
-- Choices: `BalanceOf`, `Mint`, `Burn`, `Transfer`, `Freeze`, `Unfreeze`.
+| File | Kind | Defines | Role |
+|---|---|---|---|
+| `Mandatory/Auth.daml` | Helper | `isAuthorized : Party -> Party -> [Party] -> Bool` | Shared authorization predicate. Returns `True` if `actor` is the issuer or a listed operator. Imported by all modules that gate privileged actions. |
+| `Mandatory/Holding.daml` | Template | `Holding` | Per-holder balance and freeze state. Keyed by `(issuer, tokenId, owner)` — the ledger enforces at most one active holding per holder. Signatory: `issuer`. Observers: `owner` and `readers`. |
+| `Mandatory/TokenConfig.daml` | Template | `TokenConfig`, `TotalSupplyOf` | Token metadata (name, symbol, tokenId, termsRef, decimals) and lifecycle state (paused, deactivated, totalSupply). Holds the `ensure` invariants for the token. Contains only the non-state-changing `TotalSupplyOf` read choice. |
+| `Mandatory/TokenAdmin.daml` | Template | `TokenAdmin` and all operational choices | Stable entry point for all issuer, operator, and holder actions. All choices are `nonconsuming` — the contract is never consumed. Each choice body is a one-line delegation to the corresponding module function. |
+| `Mandatory/PauseModule.daml` | Module functions | `doPause`, `doUnpause`, `doDeactivate` | Lifecycle control logic. `doPause`/`doUnpause` toggle the `paused` flag on `TokenConfig`. `doDeactivate` sets `deactivated = True` irreversibly. All three guard against deactivated state and no-op transitions. |
+| `Mandatory/MintModule.daml` | Module functions | `doMint` | Supply issuance logic. Creates a new `Holding` if the owner has none, or increments an existing one. Guards: authorized actor, positive amount, token not deactivated, target not frozen. Updates `totalSupply` in `TokenConfig`. |
+| `Mandatory/BurnModule.daml` | Module functions | `doBurn` | Standard supply reduction logic. Decrements the owner's `Holding` and `totalSupply`. Guards: authorized actor, positive amount, token not deactivated, holder not frozen, sufficient balance. |
+| `Mandatory/EnforcementModule.daml` | Module functions | `doForcedBurn`, `doFreeze`, `doUnfreeze` | Enforcement actions that may bypass normal guards. `doForcedBurn` skips both the frozen and deactivated checks. `doFreeze`/`doUnfreeze` toggle the `frozen` flag on a `Holding`, guarding against no-op transitions and deactivated state. |
+| `Mandatory/TransferModule.daml` | Module functions | `doTransfer` | Holder-initiated transfer logic. Debits the sender's `Holding` and credits the receiver's (creating it if absent). Guards: positive amount, token not paused or deactivated, sender and receiver not frozen, sufficient balance. Does not check `isAuthorized` — transfer is a holder right, not an operator action. |
+| `Mandatory/Model.daml` | Facade | Re-exports `Auth`, `Holding`, `TokenConfig`, `TokenAdmin` | Stable import surface for external consumers. Importing `Cmtat.Mandatory.Model` gives access to all templates and choices without depending on internal module paths. The `*Module` files are not re-exported as they are implementation details. |
+| `Test/Main.daml` | Test script | `setup : Script ()` | End-to-end Daml Script covering the full lifecycle: read checks, unauthorized rejections, mint, transfer, pause/unpause gating, freeze/unfreeze gating, standard burn, forced burn on frozen and deactivated accounts, and deactivation gating. |
 
 ## 5. Access Control and Visibility Model
 Canton separates **visibility** from **authorization**.
@@ -131,24 +102,28 @@ Practical implication:
 - A party may see data (observer) but still be unable to execute privileged actions.
 
 ## 6. Functional Specification Mapping (CMTAT Mandatory)
-### 6.1 Mandatory attributes
-- `1.a Name` -> `TokenConfig.name`
-- `1.b Symbol` -> `TokenConfig.symbol`
-- `1.c Token ID` -> `TokenConfig.tokenId`
-- `1.d Legal document reference` -> `TokenConfig.termsRef`
-- `1.e No fractions` -> `decimals == 0` unless `allowFractional = True`
+### 6.1 Token attributes
+- `1` Name -> `TokenConfig.name`
+- `2` Ticker symbol -> `TokenConfig.symbol`
+- `3` Legal document reference -> `TokenConfig.termsRef`
+- `4` No fractions -> `decimals == 0` unless `allowFractional = True`
+- `5` Token ID *(optional, included)* -> `TokenConfig.tokenId`
 
-### 6.2 Mandatory functions
-- `1.1 totalSupply` -> `TokenConfig.TotalSupplyOf`
-- `1.2 balanceOf` -> `TokenAdmin.BalanceOf`
-- `1.3 transfer` -> `TokenAdmin.Transfer`
-- `1.4 mint` -> `TokenAdmin.Mint`
-- `1.5 burn/cancel` -> `TokenAdmin.Burn`
-- `1.6 pause` -> `TokenConfig.Pause`
-- `1.7 unpause` -> `TokenConfig.Unpause`
-- `1.8 deactivate` -> `TokenConfig.Deactivate` (irreversible)
-- `1.9 freeze` -> `TokenAdmin.Freeze`
-- `1.10 unfreeze` -> `TokenAdmin.Unfreeze`
+### 6.2 Token module
+- `6` totalSupply -> `TokenConfig.TotalSupplyOf`
+- `7` balanceOf -> `TokenAdmin.BalanceOf`
+- `8` transfer -> `TokenAdmin.Transfer` (`TransferModule.doTransfer`)
+- `9` mint -> `TokenAdmin.Mint` (`MintModule.doMint`)
+- `10` burn/cancel -> `TokenAdmin.Burn` (`BurnModule.doBurn`)
+
+### 6.3 Pause module
+- `12` pause -> `TokenAdmin.Pause` (`PauseModule.doPause`)
+- `13` unpause -> `TokenAdmin.Unpause` (`PauseModule.doUnpause`)
+- `14` deactivate -> `TokenAdmin.Deactivate` (`PauseModule.doDeactivate`, irreversible)
+
+### 6.4 Enforcement module
+- `15` freeze -> `TokenAdmin.Freeze` (`EnforcementModule.doFreeze`)
+- `16` unfreeze -> `TokenAdmin.Unfreeze` (`EnforcementModule.doUnfreeze`)
 
 ## 7. Business Rules and Invariants
 - `decimals >= 0`
@@ -229,6 +204,7 @@ This section compares the CMTAT Solidity implementation family and this reposito
 | Transfer flow | ERC20-style `transfer` with optional module checks. | Holder-initiated transfer with pause/deactivation/freeze guard checks. |
 | Lifecycle enforcement | Lifecycle controls implemented in Solidity/module logic. | Lifecycle checks enforced through `TokenConfig`-based choice assertions. |
 | Optional compliance features | May include rules/allowlists and enforcement paths (for example forced transfer) by variant. | Optional compliance/enforcement modules intentionally out of scope. |
+| Numeric range for amounts | `uint256` (0 to ~1.16 × 10⁷⁷). Supports 18 decimals with supply in the billions without overflow. | `Int` (64-bit signed, max 2⁶³ − 1 ≈ 9.2 × 10¹⁸). With 18 decimals, usable supply in human units is capped at ~9.2 tokens — impractical for real issuances. Smaller decimal values (0–8) are recommended. |
 
 1. Scope
 - CMTAT Solidity: includes core plus several optional/extended modules depending on variant (allowlist, rule engine, snapshot, debt, enforcement, upgradeability, etc.).
@@ -257,6 +233,10 @@ This section compares the CMTAT Solidity implementation family and this reposito
 7. Optional compliance features
 - CMTAT Solidity: can integrate rules/allowlists and enforcement functions such as forced transfer paths depending on variant.
 - Canton package: these optional compliance/enforcement modules are intentionally out of scope in the current version.
+
+8. Numeric range for amounts
+- CMTAT Solidity: balances and supply are `uint256`, supporting values from 0 to ~1.16 × 10⁷⁷. A token with 18 decimals and a supply of billions of units fits comfortably within this range.
+- Canton package: `Holding.amount` and `TokenConfig.totalSupply` are Daml `Int`, a 64-bit signed integer with a maximum value of 2⁶³ − 1 = 9,223,372,036,854,775,807. With 18 decimals, the entire 64-bit range represents only ~9.2 human-unit tokens, making high-decimal configurations impractical. Recommended practice is to keep `decimals` between 0 and 8, where the integer range remains operationally meaningful.
 
 ## 12. Comparison: Canton Core vs CMTAT-Confidential (Zama FHE)
 
@@ -409,18 +389,92 @@ Numbering gaps (`cfg3` missing, no binding between `cfg5` and `cfg6`) reflect op
 
 In a production application, the caller is responsible for keeping track of the latest `ContractId`, typically by querying the active contract set rather than threading IDs manually.
 
-### What happens to a holder with 100 tokens on v1 when v2 is deployed?
+### 9. What happens to a holder with 100 tokens on v1 when v2 is deployed?
 The 100 tokens remain on-ledger. Uploading v2 does not delete or rewrite v1 contracts.
 
-### How do balances move from v1 state to v2 state?
+### 10. How do balances move from v1 state to v2 state?
 - SCU-compatible coexistence: continue operating while v1/v2 coexist.
 - Explicit migration: add and execute migration choices to archive v1 holdings and create equivalent v2 holdings.
 
-### Is there a built-in `Upgrade`/`MigrateHolding` choice in this repository?
+### 11. Is there a built-in `Upgrade`/`MigrateHolding` choice in this repository?
 No. Current scope provides core mandatory token operations only.
 
-### Can this be deployed as an EVM token contract?
+### 12. Can this be deployed as an EVM token contract?
 No. This is a Canton/Daml implementation, not an EVM contract codebase.
 
 ## 16. Current Environment Note
 In this execution environment, the Daml CLI may be unavailable; runtime commands/tests depend on a Daml-enabled setup.
+
+## 17. Glossary
+
+Key terms for understanding Canton and Daml, ordered from foundational to operational.
+
+### Ledger model
+
+| Term | Definition |
+|---|---|
+| **Ledger** | The distributed, append-only record of all contract events (creates and archives). There is no mutable state — only active (non-archived) contracts at any point in time. |
+| **Canton** | The enterprise distributed ledger platform by Digital Asset. Runs Daml smart contracts with privacy-aware, participant-driven execution. Not a public blockchain. |
+| **Daml** | The smart contract language and SDK by Digital Asset. Contracts are expressed as typed templates with explicit authorization and visibility rules. |
+| **DAR** | Daml Archive. The compiled, deployable artifact for a Daml package (analogous to a JAR or Wasm module). Uploaded to a Canton participant to activate contract logic. |
+| **Package** | A versioned unit of Daml code identified by a package hash. Multiple versions can coexist on the same ledger. |
+
+### Parties and roles
+
+| Term | Definition |
+|---|---|
+| **Party** | A named principal with a cryptographic identity on the Canton network. Authorization and visibility are always expressed in terms of parties. Analogous to an Ethereum address, but scoped to a Canton deployment. |
+| **Participant** | A Canton node that hosts one or more parties, manages their private contract data, and submits/validates transactions on their behalf. |
+| **Signatory** | A party whose authorization is required to create (or archive) a contract. Signatories are bound by the contract's obligations. Every contract must have at least one signatory. |
+| **Observer** | A party that can see a contract's data but is not bound by it and does not authorize its creation. Observers have read-only visibility. |
+| **Controller** | The party (or set of parties) authorized to exercise a specific choice on a contract. Declared per choice, not at the template level. |
+| **Stakeholder** | Any party that is either a signatory or an observer of a contract. Stakeholders are the only parties who can see that contract on the ledger. |
+| **Maintainer** | The signatory responsible for enforcing uniqueness of a contract key. Must be a subset of the signatories. |
+
+### Contracts and templates
+
+| Term | Definition |
+|---|---|
+| **Template** | The blueprint for a contract. Defines typed fields, signatories, observers, contract key (optional), and choices. Equivalent to a class definition. |
+| **Contract** | A live instance of a template on the ledger. Identified by a `ContractId`. Once archived, it can never be reactivated — a new contract must be created instead. |
+| **ContractId** | A globally unique, opaque identifier for a specific contract instance. Becomes stale (unusable) as soon as the contract is archived. |
+| **Contract Key** | An optional, user-defined unique identifier derived from a contract's fields (e.g. `(issuer, tokenId, owner)` for `Holding`). Enables `lookupByKey` without knowing the `ContractId`. |
+| **Archive** | The operation that permanently retires a contract from the active ledger. Equivalent to deletion, but the historical record is preserved. State changes in Daml are always expressed as archive-and-create pairs. |
+| **Active Contract Set (ACS)** | The set of all contracts that have been created but not yet archived. Querying the ACS is how applications discover the current live `ContractId` for a given contract. |
+
+### Choices and execution
+
+| Term | Definition |
+|---|---|
+| **Choice** | An action that can be exercised on a contract by its controller. The body is an `Update` computation that may fetch, create, and archive contracts. |
+| **Consuming choice** | A choice that archives its own contract when exercised. The default in Daml. The contract cannot be used again after the choice runs. |
+| **Nonconsuming choice** | A choice that leaves its own contract active after execution. Used when the same contract must be exercisable multiple times (e.g. `TokenAdmin`). Declared with the `nonconsuming` keyword. |
+| **`Update`** | The monad type for all ledger operations in Daml. A value of type `Update a` represents a ledger action that produces a result of type `a`. Choices return `Update a`. |
+| **`fetch`** | An `Update` operation that reads a contract's fields by `ContractId`. Does not consume the contract. The `actAs` parties of the submitting transaction must be stakeholders of the fetched contract. |
+| **`lookupByKey`** | An `Update` operation that resolves a contract key to a `ContractId` (returning `Optional (ContractId t)`). Requires the key maintainer to be visible to the submitting transaction — in practice, the submitting party must be an observer or signatory of contracts sharing that maintainer. |
+| **`create`** | An `Update` operation that creates a new contract instance on the ledger and returns its `ContractId`. |
+| **`archive`** | An `Update` operation that archives a contract by `ContractId`. Equivalent to exercising the built-in `Archive` choice. |
+| **`abort`** | Terminates the current `Update` computation with an error, rolling back all ledger changes in the transaction. |
+| **`assertMsg`** | Aborts with a given message if a boolean condition is false. Used for precondition checks inside choice bodies. Available from the Daml Prelude without an explicit import. |
+| **`ensure`** | A contract-level invariant declared in the template body. If `ensure` evaluates to `False`, the `create` operation aborts. Enforces structural validity on every contract instance. |
+
+### Daml Script
+
+| Term | Definition |
+|---|---|
+| **Daml Script** | The testing and automation framework for Daml. Replaces the deprecated Scenario API. Scripts run against a simulated or real ledger and are the standard way to write integration tests. |
+| **`submit`** | Executes a ledger command as a specific party. Fails the script if the command is rejected. |
+| **`submitMustFail`** | Asserts that a ledger command is rejected. Fails the script if the command unexpectedly succeeds. Used to verify negative cases (unauthorized access, violated invariants). |
+| **`allocateParty`** | Creates a fresh party in a Script run. Each call returns a distinct `Party` value. |
+| **`exerciseCmd`** | Constructs a command to exercise a choice on a contract, for use inside `submit` or `submitMustFail`. |
+| **`createCmd`** | Constructs a command to create a contract, for use inside `submit`. |
+
+### This package
+
+| Term | Definition |
+|---|---|
+| **`TokenConfig`** | Template holding token metadata (name, symbol, tokenId, termsRef, decimals) and lifecycle state (paused, deactivated, totalSupply). Has no contract key — uniqueness (one active instance per token) is a design convention maintained by the `TokenAdmin` choices, not enforced by the ledger. |
+| **`Holding`** | Template representing one token holder's balance and freeze state. Keyed by `(issuer, tokenId, owner)` — the ledger enforces that at most one active `Holding` exists per (token, holder) pair. |
+| **`TokenAdmin`** | Operational template. Holds no mutable state itself; all choices are `nonconsuming` and delegate to module functions. The stable entry point for all issuer/operator/holder actions. |
+| **`isAuthorized`** | Helper function (`Auth.daml`) returning `True` if `actor == issuer` or `actor ∈ operators`. Used as a precondition in all privileged choices. |
+| **Module function** | A standalone `Update`-returning function in a `*Module.daml` file (e.g. `doMint`, `doBurn`). Contains the business logic; called by the corresponding `TokenAdmin` choice. Mirrors the CMTAT Solidity module pattern. |

@@ -1,8 +1,12 @@
 module Cmtat.Mandatory.TokenAdmin where
 
-import Cmtat.Mandatory.Auth (isAuthorized)
+import Cmtat.Mandatory.BurnModule (doBurn)
+import Cmtat.Mandatory.EnforcementModule (doForcedBurn, doFreeze, doUnfreeze)
 import Cmtat.Mandatory.Holding (Holding(..))
+import Cmtat.Mandatory.MintModule (doMint)
+import Cmtat.Mandatory.PauseModule (doDeactivate, doPause, doUnpause)
 import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+import Cmtat.Mandatory.TransferModule (doTransfer)
 
 template TokenAdmin
   with
@@ -19,39 +23,21 @@ template TokenAdmin
         actor : Party
         configCid : ContractId TokenConfig
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-        archive configCid
-        create cfg with paused = True
+      do doPause actor issuer operators tokenId configCid
 
     nonconsuming choice Unpause : ContractId TokenConfig
       with
         actor : Party
         configCid : ContractId TokenConfig
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-        archive configCid
-        create cfg with paused = False
+      do doUnpause actor issuer operators tokenId configCid
 
     nonconsuming choice Deactivate : ContractId TokenConfig
       with
         actor : Party
         configCid : ContractId TokenConfig
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "already deactivated" (not cfg.deactivated)
-        archive configCid
-        create cfg with deactivated = True
+      do doDeactivate actor issuer operators tokenId configCid
 
     nonconsuming choice BalanceOf : Int
       with
@@ -73,34 +59,7 @@ template TokenAdmin
         owner : Party
         mintAmount : Int
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "mint amount must be positive" (mintAmount > 0)
-
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-
-        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
-        case mHoldingCid of
-          None -> do
-            _ <- create Holding with
-              issuer = issuer
-              owner = owner
-              readers = operators ++ readers
-              tokenId = tokenId
-              amount = mintAmount
-              frozen = False
-            pure ()
-          Some holdingCid -> do
-            h <- fetch holdingCid
-            assertMsg "holder frozen" (not h.frozen)
-            archive holdingCid
-            _ <- create h with amount = h.amount + mintAmount
-            pure ()
-
-        archive configCid
-        create cfg with totalSupply = cfg.totalSupply + mintAmount
+      do doMint actor issuer operators readers tokenId configCid owner mintAmount
 
     nonconsuming choice Burn : ContractId TokenConfig
       with
@@ -109,28 +68,7 @@ template TokenAdmin
         owner : Party
         burnAmount : Int
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "burn amount must be positive" (burnAmount > 0)
-
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-
-        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
-        holdingCid <- case mHoldingCid of
-          None -> abort "holding does not exist"
-          Some cid -> pure cid
-
-        h <- fetch holdingCid
-        assertMsg "holder frozen" (not h.frozen)
-        assertMsg "insufficient balance" (h.amount >= burnAmount)
-
-        archive holdingCid
-        _ <- create h with amount = h.amount - burnAmount
-
-        archive configCid
-        create cfg with totalSupply = cfg.totalSupply - burnAmount
+      do doBurn actor issuer operators tokenId configCid owner burnAmount
 
     -- Bypasses frozen and deactivated checks.
     nonconsuming choice ForcedBurn : ContractId TokenConfig
@@ -140,26 +78,7 @@ template TokenAdmin
         owner : Party
         burnAmount : Int
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        assertMsg "burn amount must be positive" (burnAmount > 0)
-
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-
-        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
-        holdingCid <- case mHoldingCid of
-          None -> abort "holding does not exist"
-          Some cid -> pure cid
-
-        h <- fetch holdingCid
-        assertMsg "insufficient balance" (h.amount >= burnAmount)
-
-        archive holdingCid
-        _ <- create h with amount = h.amount - burnAmount
-
-        archive configCid
-        create cfg with totalSupply = cfg.totalSupply - burnAmount
+      do doForcedBurn actor issuer operators tokenId configCid owner burnAmount
 
     nonconsuming choice Freeze : ContractId Holding
       with
@@ -167,20 +86,7 @@ template TokenAdmin
         configCid : ContractId TokenConfig
         owner : Party
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-
-        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
-        holdingCid <- case mHoldingCid of
-          None -> abort "holding does not exist"
-          Some cid -> pure cid
-
-        h <- fetch holdingCid
-        archive holdingCid
-        create h with frozen = True
+      do doFreeze actor issuer operators tokenId configCid owner
 
     nonconsuming choice Unfreeze : ContractId Holding
       with
@@ -188,20 +94,7 @@ template TokenAdmin
         configCid : ContractId TokenConfig
         owner : Party
       controller actor
-      do
-        assertMsg "not authorized" (isAuthorized actor issuer operators)
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-
-        mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
-        holdingCid <- case mHoldingCid of
-          None -> abort "holding does not exist"
-          Some cid -> pure cid
-
-        h <- fetch holdingCid
-        archive holdingCid
-        create h with frozen = False
+      do doUnfreeze actor issuer operators tokenId configCid owner
 
     nonconsuming choice Transfer : ()
       with
@@ -210,44 +103,4 @@ template TokenAdmin
         to : Party
         transferAmount : Int
       controller actor
-      do
-        assertMsg "amount must be positive" (transferAmount > 0)
-
-        cfg <- fetch configCid
-        assertMsg "token mismatch" (cfg.tokenId == tokenId)
-        assertMsg "token deactivated" (not cfg.deactivated)
-        assertMsg "token paused" (not cfg.paused)
-
-        mFromCid <- lookupByKey @Holding (issuer, tokenId, actor)
-        fromCid <- case mFromCid of
-          None -> abort "sender holding does not exist"
-          Some cid -> pure cid
-        fromH <- fetch fromCid
-
-        assertMsg "sender frozen" (not fromH.frozen)
-        assertMsg "insufficient balance" (fromH.amount >= transferAmount)
-
-        mToCid <- lookupByKey @Holding (issuer, tokenId, to)
-        toHolding <- case mToCid of
-          None -> pure (Holding with
-            issuer = issuer
-            owner = to
-            readers = operators ++ readers
-            tokenId = tokenId
-            amount = 0
-            frozen = False)
-          Some cid -> fetch cid
-
-        assertMsg "receiver frozen" (not toHolding.frozen)
-
-        archive fromCid
-        _ <- create fromH with amount = fromH.amount - transferAmount
-
-        case mToCid of
-          None -> do
-            _ <- create toHolding with amount = transferAmount
-            pure ()
-          Some cid -> do
-            archive cid
-            _ <- create toHolding with amount = toHolding.amount + transferAmount
-            pure ()
+      do doTransfer actor issuer operators readers tokenId configCid to transferAmount

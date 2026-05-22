@@ -1,0 +1,52 @@
+module Cmtat.Mandatory.EnforcementModule where
+
+import Cmtat.Mandatory.Auth (isAuthorized)
+import Cmtat.Mandatory.Holding (Holding(..))
+import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+
+doForcedBurn : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Party -> Int -> Update (ContractId TokenConfig)
+doForcedBurn actor issuer operators tokenId configCid owner burnAmount = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  assertMsg "burn amount must be positive" (burnAmount > 0)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+  holdingCid <- case mHoldingCid of
+    None -> abort "holding does not exist"
+    Some cid -> pure cid
+  h <- fetch holdingCid
+  assertMsg "insufficient balance" (h.amount >= burnAmount)
+  archive holdingCid
+  _ <- create h with amount = h.amount - burnAmount
+  archive configCid
+  create cfg with totalSupply = cfg.totalSupply - burnAmount
+
+doFreeze : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Party -> Update (ContractId Holding)
+doFreeze actor issuer operators tokenId configCid owner = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+  holdingCid <- case mHoldingCid of
+    None -> abort "holding does not exist"
+    Some cid -> pure cid
+  h <- fetch holdingCid
+  assertMsg "already frozen" (not h.frozen)
+  archive holdingCid
+  create h with frozen = True
+
+doUnfreeze : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Party -> Update (ContractId Holding)
+doUnfreeze actor issuer operators tokenId configCid owner = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  mHoldingCid <- lookupByKey @Holding (issuer, tokenId, owner)
+  holdingCid <- case mHoldingCid of
+    None -> abort "holding does not exist"
+    Some cid -> pure cid
+  h <- fetch holdingCid
+  assertMsg "not frozen" h.frozen
+  archive holdingCid
+  create h with frozen = False

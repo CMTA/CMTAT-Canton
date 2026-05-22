@@ -1,0 +1,33 @@
+module Cmtat.Mandatory.PauseModule where
+
+import Cmtat.Mandatory.Auth (isAuthorized)
+import Cmtat.Mandatory.TokenConfig (TokenConfig(..))
+
+doPause : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Update (ContractId TokenConfig)
+doPause actor issuer operators tokenId configCid = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  assertMsg "already paused" (not cfg.paused)
+  archive configCid
+  create cfg with paused = True
+
+doUnpause : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Update (ContractId TokenConfig)
+doUnpause actor issuer operators tokenId configCid = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "token deactivated" (not cfg.deactivated)
+  assertMsg "not paused" cfg.paused
+  archive configCid
+  create cfg with paused = False
+
+doDeactivate : Party -> Party -> [Party] -> Text -> ContractId TokenConfig -> Update (ContractId TokenConfig)
+doDeactivate actor issuer operators tokenId configCid = do
+  assertMsg "not authorized" (isAuthorized actor issuer operators)
+  cfg <- fetch configCid
+  assertMsg "token mismatch" (cfg.tokenId == tokenId)
+  assertMsg "already deactivated" (not cfg.deactivated)
+  archive configCid
+  create cfg with deactivated = True
