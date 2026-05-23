@@ -300,7 +300,7 @@ daml test
 ```
 
 ## 15. FAQ
-### 0. How do I become a token holder in Canton? Do I need to run a node?
+### a. How do I become a token holder in Canton? Do I need to run a node?
 You do not need to run your own Canton node to be a token holder.
 
 In practice, a holder is an onboarded **Party** on a Canton participant (often operated by your custodian, issuer, or service provider):
@@ -312,14 +312,14 @@ Compared to Ethereum:
 - Ethereum holder model: wallet key + public chain access.
 - Canton holder model: Party onboarding + participant connectivity + permissioned visibility.
 
-### 1. As an issuer, can I burn tokens from a token holder without their consent?
+### b. As an issuer, can I burn tokens from a token holder without their consent?
 Yes, if the actor is authorized (issuer or configured operator).
 
 - `Burn` is an issuer/operator action and does not require the holder (`owner`) to be the choice controller.
 - It requires an explicit `owner` target, an existing holding, and sufficient balance.
 - This package does not include a dedicated `forcedTransfer`/enforcement module; however, authorized cancellation via `Burn` is available in the current scope.
 
-### 2. As a token holder, how do I transfer tokens to another party?
+### c. As a token holder, how do I transfer tokens to another party?
 Transfers are holder-initiated through `TokenAdmin.Transfer`.
 
 Requirements checked by the model:
@@ -331,33 +331,33 @@ Requirements checked by the model:
 
 If all checks pass, sender and recipient holdings are updated atomically.
 
-### 3. Is this implementation intended for public-chain deployment like Ethereum mainnet?
+### d. Is this implementation intended for public-chain deployment like Ethereum mainnet?
 No. This implementation targets Canton/Daml deployments, not EVM deployment.
 
 - Smart contract logic is written as Daml templates and choices.
 - Execution, authorization, and visibility follow Canton participant/party semantics.
 - If you need Ethereum deployment, use a Solidity implementation family (for example CMTAT Solidity or CMTAT-Confidential).
 
-### 4. Does this version encrypt balances and transfer amounts like CMTAT-Confidential?
+### e. Does this version encrypt balances and transfer amounts like CMTAT-Confidential?
 No. This package does not use FHE ciphertext balances.
 
 - Privacy in Canton comes from ledger visibility rules (stakeholders/observers), not encrypted arithmetic types.
 - In contrast, CMTAT-Confidential uses encrypted values (`euint64`) and ACL-based decryption controls.
 
-### 5. Can third parties read balances and total supply?
+### f. Can third parties read balances and total supply?
 It depends on contract visibility and granted roles.
 
 - `BalanceOf` and `TotalSupplyOf` are read choices, but callers must have visibility on the corresponding contracts.
 - Visibility is controlled by Daml signatory/observer relationships (`issuer`, `operators`, `readers`, and holder-specific visibility on `Holding`).
 - There is no public "read everything" endpoint equivalent to a fully public EVM state view.
 
-### 6. What happens after deactivation?
+### g. What happens after deactivation?
 Deactivation is irreversible in this model.
 
 - State-changing token operations are blocked (`Mint`, `Burn`, `Freeze`, `Unfreeze`, and other guarded actions).
 - The read path for total supply remains available (`TotalSupplyOf`), which supports audit/reporting needs after shutdown.
 
-### 7. If we add a new function/choice in v2, do we always need a migration?
+### h. If we add a new function/choice in v2, do we always need a migration?
 No. In Canton/Daml SCU, adding new choices is generally a backward-compatible change and does not by itself require migrating all existing contracts.
 
 Rule of thumb:
@@ -366,7 +366,7 @@ Rule of thumb:
 
 Even when migration is not required, v1 and v2 may coexist during rollout; migration can still be executed later for operational standardization.
 
-### 8. What are `cfg0`, `cfg1`, `cfg5`… in the test script?
+### i. What are `cfg0`, `cfg1`, `cfg5`… in the test script?
 Each name tracks the **current live `ContractId TokenConfig`** after a state-changing operation.
 
 In Daml, contracts are immutable. Every choice that mutates `TokenConfig` (Mint, Burn, Pause, Unpause, Deactivate, ForcedBurn) archives the old contract and creates a new one, which returns a brand-new `ContractId`. The old ID is permanently dead — exercising it aborts with "contract consumed".
@@ -389,21 +389,20 @@ Numbering gaps (`cfg3` missing, no binding between `cfg5` and `cfg6`) reflect op
 
 In a production application, the caller is responsible for keeping track of the latest `ContractId`, typically by querying the active contract set rather than threading IDs manually.
 
-### 9. What happens to a holder with 100 tokens on v1 when v2 is deployed?
+### j. What happens to a holder with 100 tokens on v1 when v2 is deployed?
 The 100 tokens remain on-ledger. Uploading v2 does not delete or rewrite v1 contracts.
 
-### 10. How do balances move from v1 state to v2 state?
+### k. How do balances move from v1 state to v2 state?
 - SCU-compatible coexistence: continue operating while v1/v2 coexist.
 - Explicit migration: add and execute migration choices to archive v1 holdings and create equivalent v2 holdings.
 
-### 11. Is there a built-in `Upgrade`/`MigrateHolding` choice in this repository?
+### l. Is there a built-in `Upgrade`/`MigrateHolding` choice in this repository?
 No. Current scope provides core mandatory token operations only.
 
-### 12. Can this be deployed as an EVM token contract?
-No. This is a Canton/Daml implementation, not an EVM contract codebase.
+### m. Can this be deployed as an EVM token contract?
+No. This implementation targets Canton/Daml deployments exclusively. Daml compiles to DAR archives that run on Canton participants — there is no EVM bytecode, no Solidity ABI, and no gas model. The execution environment is fundamentally incompatible with EVM chains.
 
-## 16. Current Environment Note
-In this execution environment, the Daml CLI may be unavailable; runtime commands/tests depend on a Daml-enabled setup.
+If you need an EVM deployment of CMTAT, refer to the [CMTAT Solidity implementation](https://github.com/CMTA/CMTAT).
 
 ## 17. Glossary
 
