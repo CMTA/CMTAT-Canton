@@ -1,6 +1,6 @@
 # CMTAT-Canton Specification
 
-Canton/Daml reference implementation of the **mandatory CMTAT token baseline**.
+[Canton/Daml](https://www.canton.network/) reference implementation of the **CMTAT** security token standard.
 
 ## About CMTA and CMTAT
 [CMTA](https://www.cmta.ch/) (Capital Markets and Technology Association) publishes the CMTAT framework as a blockchain-agnostic standard for compliant tokenization of financial instruments.
@@ -158,7 +158,7 @@ Upgradeability is package evolution (DAR versions), not proxy swapping.
 - Mixed-version operation is expected during transition
 - For non-compatible shape changes, add explicit migration workflows (archive old + create new)
 
-## 10. Ethereum vs Canton (Platform Differences)
+## 10. Ethereum vs Canton (Ledger Model Differences)
 
 These differences are at blockchain/platform level, independent of CMTAT specifics.
 
