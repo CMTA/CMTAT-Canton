@@ -2,6 +2,27 @@
 
 [Canton/Daml](https://www.canton.network/) reference implementation of the **CMTAT** security token standard.
 
+## Table of Contents
+
+- [About CMTA and CMTAT](#about-cmta-and-cmtat)
+- [1. Purpose](#1-purpose)
+- [1.1 Introduction](#11-introduction)
+- [2. Scope](#2-scope)
+- [3. Repository Structure](#3-repository-structure)
+- [4. Source File Reference](#4-source-file-reference)
+- [5. Access Control and Visibility Model](#5-access-control-and-visibility-model)
+- [6. Functional Specification Mapping (CMTAT Mandatory)](#6-functional-specification-mapping-cmtat-mandatory)
+- [7. Business Rules and Invariants](#7-business-rules-and-invariants)
+- [8. Lifecycle and State Transitions](#8-lifecycle-and-state-transitions)
+- [9. Upgrade Model (Canton/Daml)](#9-upgrade-model-cantondaml)
+- [10. Ethereum vs Canton (Ledger Model Differences)](#10-ethereum-vs-canton-ledger-model-differences)
+- [11. Implementation Differences: CMTAT Solidity vs This Canton Package](#11-implementation-differences-cmtat-solidity-vs-this-canton-package)
+- [12. Comparison: Canton Core vs CMTAT-Confidential (Zama FHE)](#12-comparison-canton-core-vs-cmtat-confidential-zama-fhe)
+- [13. Test Coverage](#13-test-coverage)
+- [14. Operational Run](#14-operational-run)
+- [15. FAQ](#15-faq)
+- [17. Glossary](#17-glossary)
+
 ## About CMTA and CMTAT
 [CMTA](https://www.cmta.ch/) (Capital Markets and Technology Association) publishes the CMTAT framework as a blockchain-agnostic standard for compliant tokenization of financial instruments.
 
@@ -271,7 +292,7 @@ This section compares this repository (`cmtat-canton`) with the `CMTAT-Confident
 
 ### Feature Scope Interpretation
 
-- Canton core implementation is deliberately minimal and audit-friendly for mandatory equivalency.
+- Canton core implementation is deliberately minimal for mandatory equivalency.
 - CMTAT-Confidential is broader on confidentiality mechanics and enforcement extensions, but also has its own documented constraints (for example `euint64` limits and selective optional-module coverage).
 
 ## 13. Test Coverage
