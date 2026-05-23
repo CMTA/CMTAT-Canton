@@ -27,7 +27,7 @@ Custom changelog tag: `Dependencies`, `Documentation`, `Testing`
 
 -----
 
-## [0.1.0] - 2026-05-22
+## [0.1.0] - 2026-05-23
 
 First release of the Canton/Daml mandatory CMTAT baseline.
 
