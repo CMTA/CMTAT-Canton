@@ -22,6 +22,8 @@
 - [14. Operational Run](#14-operational-run)
 - [15. FAQ](#15-faq)
 - [17. Glossary](#17-glossary)
+- [18. License](#18-license)
+- [19. References](#19-references)
 
 ## About CMTA and CMTAT
 [CMTA](https://www.cmta.ch/) (Capital Markets and Technology Association) publishes the CMTAT framework as a blockchain-agnostic standard for compliant tokenization of financial instruments.
@@ -498,3 +500,29 @@ Key terms for understanding Canton and Daml, ordered from foundational to operat
 | **`TokenAdmin`** | Operational template. Holds no mutable state itself; all choices are `nonconsuming` and delegate to module functions. The stable entry point for all issuer/operator/holder actions. |
 | **`isAuthorized`** | Helper function (`Auth.daml`) returning `True` if `actor == issuer` or `actor ∈ operators`. Used as a precondition in all privileged choices. |
 | **Module function** | A standalone `Update`-returning function in a `*Module.daml` file (e.g. `doMint`, `doBurn`). Contains the business logic; called by the corresponding `TokenAdmin` choice. Mirrors the CMTAT Solidity module pattern. |
+
+## 18. License
+
+This project is licensed under the [MPL-2.0 License](LICENSE.md).
+
+## 19. References
+
+**CMTAT**
+- [CMTAT](https://github.com/CMTA/CMTAT) — Capital Markets and Technology Association Token Standard
+- [CMTA](https://www.cmta.ch/) — Capital Markets and Technology Association
+- [CMTAT Equivalency Assessment](https://github.com/CMTA/CMTAT-equivalency-assessment) — Checklist template for non-Solidity implementations
+
+**Canton / Digital Asset**
+- [Canton Network](https://www.canton.network/)
+- [Canton Documentation](https://docs.canton.network/)
+- [Digital Asset](https://www.digitalasset.com/) — Creator of Canton and Daml
+
+**Daml**
+- [Daml Documentation](https://docs.daml.com/)
+- [Daml Language Reference](https://docs.daml.com/daml/reference/)
+- [Daml Script](https://docs.daml.com/daml-script/)
+- [Smart Contract Upgrading (SCU)](https://docs.daml.com/upgrade/)
+
+**Tools**
+
+Part of this project was carried out with the help of [Claude Code](https://claude.ai/code) and [Codex](https://chatgpt.com/codex).
