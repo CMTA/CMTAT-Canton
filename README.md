@@ -2,6 +2,8 @@
 
 [Canton/Daml](https://www.canton.network/) reference implementation of the **CMTAT** security token standard.
 
+**Repository:** [github.com/CMTA/CMTAT-Canton](https://github.com/CMTA/CMTAT-Canton)
+
 ## Table of Contents
 
 - [About CMTA and CMTAT](#about-cmta-and-cmtat)
